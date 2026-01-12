@@ -1,42 +1,32 @@
 -- Stored Procedures for Business Analytics
 USE business_analytics;
-
-DELIMITER //
-
--- =====================================================
+DELIMITER // -- =====================================================
 -- PROCEDURE: Update Customer Lifetime Value
 -- =====================================================
-CREATE PROCEDURE sp_update_customer_lifetime_value()
-BEGIN
-    UPDATE dim_customers c
+CREATE PROCEDURE sp_update_customer_lifetime_value() BEGIN
+UPDATE dim_customers c
     LEFT JOIN (
-        SELECT 
-            customer_id,
+        SELECT customer_id,
             SUM(total_amount) AS lifetime_value
         FROM fact_sales
         WHERE order_status = 'Completed'
         GROUP BY customer_id
     ) s ON c.customer_id = s.customer_id
-    SET c.lifetime_value = COALESCE(s.lifetime_value, 0);
-    
-    SELECT ROW_COUNT() AS customers_updated;
-END //
-
--- =====================================================
+SET c.lifetime_value = COALESCE(s.lifetime_value, 0);
+SELECT ROW_COUNT() AS customers_updated;
+END // -- =====================================================
 -- PROCEDURE: Aggregate Monthly Revenue
 -- =====================================================
-CREATE PROCEDURE sp_aggregate_monthly_revenue(IN p_year INT, IN p_month INT)
-BEGIN
-    -- Delete existing records for the period
-    DELETE FROM fact_revenue 
-    WHERE date_id IN (
-        SELECT date_id 
-        FROM dim_date 
-        WHERE year = p_year AND month = p_month
+CREATE PROCEDURE sp_aggregate_monthly_revenue(IN p_year INT, IN p_month INT) BEGIN -- Delete existing records for the period
+DELETE FROM fact_revenue
+WHERE date_id IN (
+        SELECT date_id
+        FROM dim_date
+        WHERE year = p_year
+            AND month = p_month
     );
-    
-    -- Insert aggregated data
-    INSERT INTO fact_revenue (
+-- Insert aggregated data
+INSERT INTO fact_revenue (
         date_id,
         customer_id,
         product_id,
@@ -50,35 +40,33 @@ BEGIN
         total_profit,
         avg_order_value
     )
-    SELECT 
-        MIN(s.date_id) AS date_id,
-        s.customer_id,
-        s.product_id,
-        s.sales_rep_id,
-        COUNT(DISTINCT s.sale_id) AS total_orders,
-        SUM(s.quantity) AS total_quantity,
-        SUM(s.subtotal) AS gross_revenue,
-        SUM(s.discount_amount) AS total_discount,
-        SUM(s.total_amount) AS net_revenue,
-        SUM(s.cost_amount) AS total_cost,
-        SUM(s.profit_amount) AS total_profit,
-        AVG(s.total_amount) AS avg_order_value
-    FROM fact_sales s
+SELECT MIN(s.date_id) AS date_id,
+    s.customer_id,
+    s.product_id,
+    s.sales_rep_id,
+    COUNT(DISTINCT s.sale_id) AS total_orders,
+    SUM(s.quantity) AS total_quantity,
+    SUM(s.subtotal) AS gross_revenue,
+    SUM(s.discount_amount) AS total_discount,
+    SUM(s.total_amount) AS net_revenue,
+    SUM(s.cost_amount) AS total_cost,
+    SUM(s.profit_amount) AS total_profit,
+    AVG(s.total_amount) AS avg_order_value
+FROM fact_sales s
     JOIN dim_date d ON s.date_id = d.date_id
-    WHERE d.year = p_year 
-      AND d.month = p_month
-      AND s.order_status = 'Completed'
-    GROUP BY s.customer_id, s.product_id, s.sales_rep_id;
-    
-    SELECT ROW_COUNT() AS records_created;
-END //
-
--- =====================================================
+WHERE d.year = p_year
+    AND d.month = p_month
+    AND s.order_status = 'Completed'
+GROUP BY s.customer_id,
+    s.product_id,
+    s.sales_rep_id;
+SELECT ROW_COUNT() AS records_created;
+END // -- =====================================================
 -- PROCEDURE: Get Top Performing Products
 -- =====================================================
-CREATE PROCEDURE sp_get_top_products(IN p_limit INT, IN p_metric VARCHAR(20))
-BEGIN
-    SET @sql = CONCAT('
+CREATE PROCEDURE sp_get_top_products(IN p_limit INT, IN p_metric VARCHAR(20)) BEGIN
+SET @sql = CONCAT(
+        '
         SELECT 
             p.product_code,
             p.product_name,
@@ -90,84 +78,146 @@ BEGIN
         JOIN fact_sales s ON p.product_id = s.product_id
         WHERE s.order_status = ''Completed''
         GROUP BY p.product_id, p.product_code, p.product_name, p.category
-        ORDER BY ', p_metric, ' DESC
-        LIMIT ', p_limit
+        ORDER BY ',
+        p_metric,
+        ' DESC
+        LIMIT ',
+        p_limit
     );
-    
-    PREPARE stmt FROM @sql;
-    EXECUTE stmt;
-    DEALLOCATE PREPARE stmt;
-END //
-
--- =====================================================
+PREPARE stmt
+FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+END // -- =====================================================
 -- PROCEDURE: Calculate YoY Growth
 -- =====================================================
-CREATE PROCEDURE sp_calculate_yoy_growth(IN p_year INT, IN p_month INT)
-BEGIN
-    SELECT 
-        current.month_name,
-        current.net_revenue AS current_year_revenue,
-        previous.net_revenue AS previous_year_revenue,
-        ((current.net_revenue - previous.net_revenue) / previous.net_revenue * 100) AS yoy_growth_pct
-    FROM 
-        (SELECT * FROM vw_monthly_revenue WHERE year = p_year AND month = p_month) AS current
-    LEFT JOIN 
-        (SELECT * FROM vw_monthly_revenue WHERE year = p_year - 1 AND month = p_month) AS previous
-    ON current.month = previous.month;
-END //
-
--- =====================================================
+CREATE PROCEDURE sp_calculate_yoy_growth(IN p_year INT, IN p_month INT) BEGIN
+SELECT current.month_name,
+    current.net_revenue AS current_year_revenue,
+    previous.net_revenue AS previous_year_revenue,
+    (
+        (current.net_revenue - previous.net_revenue) / previous.net_revenue * 100
+    ) AS yoy_growth_pct
+FROM (
+        SELECT *
+        FROM vw_monthly_revenue
+        WHERE year = p_year
+            AND month = p_month
+    ) AS current
+    LEFT JOIN (
+        SELECT *
+        FROM vw_monthly_revenue
+        WHERE year = p_year - 1
+            AND month = p_month
+    ) AS previous ON current.month = previous.month;
+END // -- =====================================================
 -- PROCEDURE: Clean Old Audit Logs
 -- =====================================================
-CREATE PROCEDURE sp_clean_audit_logs(IN p_days_to_keep INT)
-BEGIN
-    DELETE FROM etl_audit_log
-    WHERE start_time < DATE_SUB(NOW(), INTERVAL p_days_to_keep DAY);
-    
-    SELECT ROW_COUNT() AS logs_deleted;
-END //
-
--- =====================================================
+CREATE PROCEDURE sp_clean_audit_logs(IN p_days_to_keep INT) BEGIN
+DELETE FROM etl_audit_log
+WHERE start_time < DATE_SUB(NOW(), INTERVAL p_days_to_keep DAY);
+SELECT ROW_COUNT() AS logs_deleted;
+END // -- =====================================================
 -- PROCEDURE: Get Sales Funnel Metrics
 -- =====================================================
-CREATE PROCEDURE sp_get_sales_funnel()
-BEGIN
-    SELECT 
-        'Total Orders' AS stage,
-        COUNT(*) AS count,
-        100.00 AS percentage
-    FROM fact_sales
-    
-    UNION ALL
-    
-    SELECT 
-        'Completed Orders' AS stage,
-        COUNT(*) AS count,
-        (COUNT(*) * 100.0 / (SELECT COUNT(*) FROM fact_sales)) AS percentage
-    FROM fact_sales
-    WHERE order_status = 'Completed'
-    
-    UNION ALL
-    
-    SELECT 
-        'Cancelled Orders' AS stage,
-        COUNT(*) AS count,
-        (COUNT(*) * 100.0 / (SELECT COUNT(*) FROM fact_sales)) AS percentage
-    FROM fact_sales
-    WHERE order_status = 'Cancelled'
-    
-    UNION ALL
-    
-    SELECT 
-        'Returned Orders' AS stage,
-        COUNT(*) AS count,
-        (COUNT(*) * 100.0 / (SELECT COUNT(*) FROM fact_sales)) AS percentage
-    FROM fact_sales
-    WHERE order_status = 'Returned';
-END //
-
-DELIMITER ;
-
+CREATE PROCEDURE sp_get_sales_funnel() BEGIN
+SELECT 'Total Orders' AS stage,
+    COUNT(*) AS count,
+    100.00 AS percentage
+FROM fact_sales
+UNION ALL
+SELECT 'Completed Orders' AS stage,
+    COUNT(*) AS count,
+    (
+        COUNT(*) * 100.0 / (
+            SELECT COUNT(*)
+            FROM fact_sales
+        )
+    ) AS percentage
+FROM fact_sales
+WHERE order_status = 'Completed'
+UNION ALL
+SELECT 'Cancelled Orders' AS stage,
+    COUNT(*) AS count,
+    (
+        COUNT(*) * 100.0 / (
+            SELECT COUNT(*)
+            FROM fact_sales
+        )
+    ) AS percentage
+FROM fact_sales
+WHERE order_status = 'Cancelled'
+UNION ALL
+SELECT 'Returned Orders' AS stage,
+    COUNT(*) AS count,
+    (
+        COUNT(*) * 100.0 / (
+            SELECT COUNT(*)
+            FROM fact_sales
+        )
+    ) AS percentage
+FROM fact_sales
+WHERE order_status = 'Returned';
+END // -- =====================================================
+-- PROCEDURE: Get Revenue by Category
+-- =====================================================
+CREATE PROCEDURE sp_get_revenue_by_category(IN p_start_date DATE, IN p_end_date DATE) BEGIN
+SELECT p.category,
+    COUNT(DISTINCT s.sale_id) AS total_orders,
+    SUM(s.quantity) AS total_quantity,
+    SUM(s.total_amount) AS total_revenue,
+    SUM(s.profit_amount) AS total_profit,
+    AVG(s.total_amount) AS avg_order_value
+FROM fact_sales s
+    JOIN dim_products p ON s.product_id = p.product_id
+    JOIN dim_date d ON s.date_id = d.date_id
+WHERE d.full_date BETWEEN p_start_date AND p_end_date
+    AND s.order_status = 'Completed'
+GROUP BY p.category
+ORDER BY total_revenue DESC;
+END // -- =====================================================
+-- PROCEDURE: Get Customer Retention Rate
+-- =====================================================
+CREATE PROCEDURE sp_get_customer_retention_rate(IN p_year INT, IN p_month INT) BEGIN -- Customers who purchased in the given month
+SELECT COUNT(DISTINCT customer_id) INTO @current_customers
+FROM fact_sales s
+    JOIN dim_date d ON s.date_id = d.date_id
+WHERE d.year = p_year
+    AND d.month = p_month
+    AND s.order_status = 'Completed';
+-- Customers who purchased in previous month AND current month
+SELECT COUNT(DISTINCT curr.customer_id) INTO @retained_customers
+FROM (
+        SELECT DISTINCT customer_id
+        FROM fact_sales s
+            JOIN dim_date d ON s.date_id = d.date_id
+        WHERE d.year = p_year
+            AND d.month = p_month
+            AND s.order_status = 'Completed'
+    ) curr
+    INNER JOIN (
+        SELECT DISTINCT customer_id
+        FROM fact_sales s
+            JOIN dim_date d ON s.date_id = d.date_id
+        WHERE (
+                d.year = p_year
+                AND d.month = p_month - 1
+            )
+            OR (
+                p_month = 1
+                AND d.year = p_year - 1
+                AND d.month = 12
+            )
+            AND s.order_status = 'Completed'
+    ) prev ON curr.customer_id = prev.customer_id;
+SELECT p_year AS year,
+    p_month AS month,
+    @current_customers AS current_customers,
+    @retained_customers AS retained_customers,
+    (
+        @retained_customers / NULLIF(@current_customers, 0) * 100
+    ) AS retention_rate_pct;
+END // DELIMITER;
 -- =====================================================
 -- GRANT PERMISSIONS (Adjust as needed)
 -- =====================================================
