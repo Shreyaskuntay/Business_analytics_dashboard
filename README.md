@@ -109,7 +109,7 @@ business-analytics-dashboard/
 1. **Clone the repository**
 
 ```bash
-git clone https://github.com/yourusername/business-analytics-dashboard.git
+git clone https://github.com/Shreyaskuntay/business-analytics-dashboard.git
 cd business-analytics-dashboard
 ```
 
