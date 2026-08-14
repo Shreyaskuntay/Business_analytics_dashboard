@@ -284,8 +284,8 @@ This project is licensed under the MIT License.
 
 **Your Name**
 
-- GitHub: [@yourusername](https://github.com/yourusername)
-- LinkedIn: [Your LinkedIn](https://linkedin.com/in/yourprofile)
+- GitHub: [@Shreyaskuntay]([https://github.com/yourusername](https://github.com/Shreyaskuntay))
+- LinkedIn: Shreyas kuntay ([https://linkedin.com/in/yourprofile](https://www.linkedin.com/in/shreyas-kuntay-arunkumar-112a3027a/))
 
 ## 🙏 Acknowledgments
 
